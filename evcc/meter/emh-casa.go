@@ -1,5 +1,30 @@
-// CASA 1.1 Smart Meter Gateway
+// EMH CASA 1.1 Smart Meter Gateway [emh-metering.com](https://emh-metering.com/produkte/smart-meter-gateway/casa/)
 // implementation is based on [smartmetergateway](https://github.com/gosanman/smartmetergateway)
+
+// github.com/gosanman/smartmetergateway package is subject to the following license:
+
+// MIT License
+//
+// Copyright (c) 2026 gosanman
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 package meter
 
 import (
@@ -92,7 +117,7 @@ func NewEMHCasaFromConfig(other map[string]any) (api.Meter, error) {
 
 // NewEMHCasa creates an EMH CASA meter
 func NewEMHCasa(uri, user, password, meterID, host string, refresh time.Duration) (api.Meter, error) {
-	log := util.NewLogger("emh-casa")
+	log := util.NewLogger("emh-casa").Redact(user, password)
 
 	if host == "" {
 		derived, err := parseURIHost(uri)
@@ -136,11 +161,24 @@ func NewEMHCasa(uri, user, password, meterID, host string, refresh time.Duration
 
 	if m.meterID == "" {
 		if err := m.discoverMeterID(); err != nil {
-			return nil, fmt.Errorf("failed to discover meter ID: %w", err)
+			return nil, fmt.Errorf("failed to discover meter ID")
 		}
-		log.DEBUG.Printf("discovered meter ID: %s", m.meterID)
+		prefix := m.meterID
+		if len(prefix) > 4 {
+			prefix = prefix[:4] + "..."
+		}
+		log.DEBUG.Printf("discovered meter ID: %s", prefix)
 	} else {
-		log.DEBUG.Printf("using configured meter ID: %s", m.meterID)
+		prefix := m.meterID
+		if len(prefix) > 4 {
+			prefix = prefix[:4] + "..."
+		}
+		log.DEBUG.Printf("using configured meter ID: %s", prefix)
+	}
+
+	// Redact meter ID for any future logs
+	if m.meterID != "" {
+		log.Redact(m.meterID)
 	}
 
 	// Validate connection
@@ -154,8 +192,6 @@ func NewEMHCasa(uri, user, password, meterID, host string, refresh time.Duration
 
 	return m, nil
 }
-
-// ---- API structures ----
 
 type derivedContract struct {
 	TafType       string   `json:"taf_type"`
@@ -178,26 +214,26 @@ func (m *EMHCasa) discoverMeterID() error {
 	var contracts []string
 	uri := fmt.Sprintf("%s/json/metering/derived", m.uri)
 
-	m.log.DEBUG.Printf("discovering meter ID from: %s", uri)
+	m.log.DEBUG.Printf("discovering meter ID")
 
 	if err := m.GetJSON(uri, &contracts); err != nil {
-		return fmt.Errorf("failed to get contracts: %w", err)
+		return fmt.Errorf("failed to get contracts")
 	}
 
 	m.log.DEBUG.Printf("found %d contract(s)", len(contracts))
 
 	for _, id := range contracts {
-		m.log.DEBUG.Printf("checking contract: %s", id)
+		m.log.DEBUG.Printf("checking contract")
 
 		var c derivedContract
 		uri := fmt.Sprintf("%s/json/metering/derived/%s", m.uri, id)
 
 		if err := m.GetJSON(uri, &c); err != nil {
-			m.log.DEBUG.Printf("failed to get contract details: %v", err)
+			m.log.DEBUG.Printf("failed to get contract details")
 			continue
 		}
 
-		m.log.DEBUG.Printf("contract %s: taf_type=%s, sensor_domains=%v", id, c.TafType, c.SensorDomains)
+		m.log.DEBUG.Printf("checking contract with taf_type=%s", c.TafType)
 
 		if c.TafType == "TAF-1" && len(c.SensorDomains) > 0 {
 			m.meterID = c.SensorDomains[0]
@@ -276,8 +312,6 @@ func (m *EMHCasa) getMeterValues() (map[string]float64, error) {
 
 	return values, nil
 }
-
-// ---- evcc interfaces ----
 
 // CurrentPower implements api.Meter (OBIS 16.7.0)
 func (m *EMHCasa) CurrentPower() (float64, error) {
