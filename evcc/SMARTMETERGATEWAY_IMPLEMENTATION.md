@@ -1,5 +1,10 @@
 # EMH CASA - Implementation Summary
 
+## References
+[evcc PR#26427](https://github.com/evcc-io/evcc/pull/26427)
+
+[Go package](https://github.com/iseeberg79/emh-casa-go)
+
 ## Test-Ergebnisse
 
 ### Vorhandene OBIS-Codes
